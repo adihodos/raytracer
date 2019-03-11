@@ -3,6 +3,9 @@ extern crate rand;
 extern crate rgb;
 
 use std::rc::Rc;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread::Thread;
 
 use rgb::RGB8;
 
@@ -17,6 +20,7 @@ mod ray;
 mod sphere;
 mod timer;
 mod vec3;
+mod window;
 
 use camera::Camera;
 use dielectric::Dielectric;
@@ -30,6 +34,7 @@ use ray::Ray;
 use sphere::Sphere;
 use timer::BasicTimer;
 use vec3::{random_in_unit_sphere, to_rgb8, Vec3};
+use window::Window;
 
 fn write_image(filename: &str, width: u32, height: u32, pixels: &[RGB8]) -> std::io::Result<()> {
     use png::HasParameters;
@@ -147,57 +152,121 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
     (world, materials)
 }
 
+const THREADS_X: u32 = 4;
+const THREADS_Y: u32 = 4;
+
 fn main() {
     let nx = 1200;
     let ny = 800;
     let ns = 10;
 
-    let mut pixels = Vec::new();
-    let mut rng = thread_rng();
+    let window = Window::new(0, nx, 0, ny);
 
-    let lookfrom = Vec3::new(13f32, 2f32, 3f32);
-    let lookat = Vec3::new(0f32, 0f32, 0f32);
-    let dist_to_focus = 10f32;
-    let aperture = 0.1f32;
+    let domains = {
+        let mut d = Vec::new();
+        let work_x = window.width() / THREADS_X;
+        let work_y = window.height() / THREADS_Y;
 
-    let cam = Camera::new(
-        lookfrom,
-        lookat,
-        Vec3::new(0f32, 1f32, 0f32),
-        20f32,
-        nx as f32 / ny as f32,
-        aperture,
-        dist_to_focus,
-    );
+        for y in 0..THREADS_Y {
+            for x in 0..THREADS_X {
+                d.push(Window::new(
+                    x * work_x,
+                    (x + 1) * work_x,
+                    y * work_y,
+                    (y + 1) * work_y,
+                ));
+            }
+        }
 
-    let (world, materials) = random_scene();
+        Arc::new(Mutex::new(d))
+    };
 
-    let tmr = BasicTimer::new();
+    println!("Domains {:?}", domains);
 
-    for y in (0..ny).rev() {
-        for x in 0..nx {
-            let mut col = Vec3::same(0f32);
+    let (tx, rx) = std::sync::mpsc::channel();
 
-            for _ in 0..ns {
-                let dx: f32 = rng.gen();
-                let u = (x as f32 + dx) / nx as f32;
+    let mut threads = Vec::new();
 
-                let dy: f32 = rng.gen();
-                let v = (y as f32 + dy) / ny as f32;
+    for i in 0..4 {
+        let work_packages = domains.clone();
+        let tx = tx.clone();
 
-                let r = cam.ray_at(u, v);
-                col += color(&r, &world, 0);
+        let thread = std::thread::spawn(move || loop {
+            let wkpkg = {
+                let mut work = work_packages.lock().unwrap();
+                work.pop()
+            };
+
+            if !wkpkg.is_some() {
+                println!("Thread {} out of work, shutting down", i);
+                break;
             }
 
-            col /= ns as f32;
-            col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
-            let pixel_color = to_rgb8(col);
-            pixels.push(pixel_color);
-        }
+            let pkg = wkpkg.unwrap();
+
+            //println!("Thread {}, work {:?}", i, pkg);
+            tx.send((i, pkg)).unwrap();
+        });
+        threads.push(thread);
     }
 
-    tmr.end();
+    loop {
+        let msg = rx.recv().unwrap();
+        println!("Thread {}, work {:?}", msg.0, msg.1);
+    }
 
-    println!("Raytraced in {} seconds", tmr.elapsed_seconds());
-    write_image("raytraced.png", nx as u32, ny as u32, &pixels).expect("Failed to write image!");
+    for t in threads {
+        t.join().unwrap();
+    }
+
+    // println!("Domains : {:?}", domains);
+
+    // let mut pixels = Vec::new();
+    // let mut rng = thread_rng();
+
+    // let lookfrom = Vec3::new(13f32, 2f32, 3f32);
+    // let lookat = Vec3::new(0f32, 0f32, 0f32);
+    // let dist_to_focus = 10f32;
+    // let aperture = 0.1f32;
+
+    // let cam = Camera::new(
+    //     lookfrom,
+    //     lookat,
+    //     Vec3::new(0f32, 1f32, 0f32),
+    //     20f32,
+    //     nx as f32 / ny as f32,
+    //     aperture,
+    //     dist_to_focus,
+    // );
+
+    // let (world, materials) = random_scene();
+
+    // let tmr = BasicTimer::new();
+
+    // for y in (window.ymin..window.ymax).rev() {
+    //     for x in window.xmin..window.xmax {
+    //         let mut col = Vec3::same(0f32);
+
+    //         for _ in 0..ns {
+    //             let dx: f32 = rng.gen();
+    //             let u = (x as f32 + dx) / nx as f32;
+
+    //             let dy: f32 = rng.gen();
+    //             let v = (y as f32 + dy) / ny as f32;
+
+    //             let r = cam.ray_at(u, v);
+    //             col += color(&r, &world, 0);
+    //         }
+
+    //         col /= ns as f32;
+    //         col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
+    //         let pixel_color = to_rgb8(col);
+    //         pixels.push(pixel_color);
+    //     }
+    // }
+
+    // tmr.end();
+
+    // println!("Raytraced in {} seconds", tmr.elapsed_seconds());
+    // write_image("raytraced.png", nx as u32, ny as u32, &pixels).expect("Failed to write image!");
 }
