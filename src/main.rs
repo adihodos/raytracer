@@ -2,10 +2,9 @@ extern crate png;
 extern crate rand;
 extern crate rgb;
 
-use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::thread::Thread;
+use std::thread;
 
 use rgb::RGB8;
 
@@ -33,7 +32,7 @@ use rand::prelude::*;
 use ray::Ray;
 use sphere::Sphere;
 use timer::BasicTimer;
-use vec3::{random_in_unit_sphere, to_rgb8, Vec3};
+use vec3::{to_rgb8, Vec3};
 use window::Window;
 
 fn write_image(filename: &str, width: u32, height: u32, pixels: &[RGB8]) -> std::io::Result<()> {
@@ -72,11 +71,11 @@ fn color(r: &Ray, world: &HitableList, depth: i32) -> Vec3 {
     (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
 }
 
-fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
+fn random_scene() -> (HitableList, Vec<Arc<Material>>) {
     let mut world = HitableList::new();
-    let mut materials: Vec<Rc<Material>> = Vec::new();
+    let mut materials: Vec<Arc<Material>> = Vec::new();
 
-    materials.push(Rc::new(Lambertian::new(Vec3::new(0.5f32, 0.5f32, 0.5f32))));
+    materials.push(Arc::new(Lambertian::new(Vec3::new(0.5f32, 0.5f32, 0.5f32))));
 
     world.add_object(Box::new(Sphere::new(
         Vec3::new(0f32, -1000f32, 0f32),
@@ -97,16 +96,18 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
             );
 
             if (center - Vec3::new(4f32, 0.2f32, 0f32)).length() > 0.9f32 {
-                let mtl: Rc<Material> = if choose_mat < 0.8f32 {
+                let mtl: Arc<Material> = if choose_mat < 0.8f32 {
+                    //
                     // diffuse
-                    Rc::new(Lambertian::new(Vec3::new(
+                    Arc::new(Lambertian::new(Vec3::new(
                         rng.gen::<f32>() * rng.gen::<f32>(),
                         rng.gen::<f32>() * rng.gen::<f32>(),
                         rng.gen::<f32>() * rng.gen::<f32>(),
                     )))
                 } else if choose_mat < 0.95f32 {
+                    //
                     // metal
-                    Rc::new(Metal::new(
+                    Arc::new(Metal::new(
                         Vec3::new(
                             0.5f32 * (1f32 + rng.gen::<f32>()),
                             0.5f32 * (1f32 + rng.gen::<f32>()),
@@ -115,8 +116,9 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
                         0.5f32 * rng.gen::<f32>(),
                     ))
                 } else {
+                    //
                     // glass
-                    Rc::new(Dielectric::new(1.5f32))
+                    Arc::new(Dielectric::new(1.5f32))
                 };
 
                 materials.push(mtl.clone());
@@ -125,7 +127,7 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
         }
     }
 
-    let mtl = Rc::new(Dielectric::new(1.5f32));
+    let mtl = Arc::new(Dielectric::new(1.5f32));
     materials.push(mtl.clone());
     world.add_object(Box::new(Sphere::new(
         Vec3::new(0f32, 1f32, 0f32),
@@ -133,7 +135,7 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
         mtl.clone(),
     )));
 
-    let mtl = Rc::new(Lambertian::new(Vec3::new(0.4f32, 0.2f32, 0.1f32)));
+    let mtl = Arc::new(Lambertian::new(Vec3::new(0.4f32, 0.2f32, 0.1f32)));
     materials.push(mtl.clone());
     world.add_object(Box::new(Sphere::new(
         Vec3::new(-4f32, 1f32, 0f32),
@@ -141,7 +143,7 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
         mtl.clone(),
     )));
 
-    let mtl = Rc::new(Metal::new(Vec3::new(0.7f32, 0.6f32, 0.5f32), 0f32));
+    let mtl = Arc::new(Metal::new(Vec3::new(0.7f32, 0.6f32, 0.5f32), 0f32));
     materials.push(mtl.clone());
     world.add_object(Box::new(Sphere::new(
         Vec3::new(4f32, 1f32, 0f32),
@@ -152,8 +154,8 @@ fn random_scene() -> (HitableList, Vec<Rc<Material>>) {
     (world, materials)
 }
 
-const THREADS_X: u32 = 4;
-const THREADS_Y: u32 = 4;
+const THREAD_COUNT: i32 = 4;
+const WORK_TILE_SIZE: u32 = 4;
 
 fn main() {
     let nx = 1200;
@@ -161,14 +163,33 @@ fn main() {
     let ns = 10;
 
     let window = Window::new(0, nx, 0, ny);
+    let lookfrom = Vec3::new(13f32, 2f32, 3f32);
+    let lookat = Vec3::new(0f32, 0f32, 0f32);
+    let dist_to_focus = 10f32;
+    let aperture = 0.1f32;
+
+    let cam = Camera::new(
+        lookfrom,
+        lookat,
+        Vec3::new(0f32, 1f32, 0f32),
+        20f32,
+        nx as f32 / ny as f32,
+        aperture,
+        dist_to_focus,
+    );
+
+    let (world, _) = random_scene();
+    let world = Arc::new(world);
 
     let domains = {
         let mut d = Vec::new();
-        let work_x = window.width() / THREADS_X;
-        let work_y = window.height() / THREADS_Y;
+        let work_x = window.width() / WORK_TILE_SIZE;
+        let work_y = window.height() / WORK_TILE_SIZE;
 
-        for y in 0..THREADS_Y {
-            for x in 0..THREADS_X {
+        println!("Work_x {} :: Work_y {}", work_x, work_y);
+
+        for y in 0..WORK_TILE_SIZE {
+            for x in 0..WORK_TILE_SIZE {
                 d.push(Window::new(
                     x * work_x,
                     (x + 1) * work_x,
@@ -178,95 +199,101 @@ fn main() {
             }
         }
 
+        println!("Work packages {}", d.len());
         Arc::new(Mutex::new(d))
     };
 
-    println!("Domains {:?}", domains);
-
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = mpsc::channel();
 
     let mut threads = Vec::new();
 
-    for i in 0..4 {
+    let tmr = BasicTimer::new();
+
+    for i in 0..THREAD_COUNT {
         let work_packages = domains.clone();
         let tx = tx.clone();
+        let world = world.clone();
 
-        let thread = std::thread::spawn(move || loop {
-            let wkpkg = {
-                let mut work = work_packages.lock().unwrap();
-                work.pop()
+        let thread = thread::spawn(move || loop {
+            let mut rng = thread_rng();
+
+            let current_work_package = {
+                let mut work_queue = work_packages.lock().unwrap();
+                work_queue.pop()
             };
 
-            if !wkpkg.is_some() {
+            if !current_work_package.is_some() {
                 println!("Thread {} out of work, shutting down", i);
                 break;
             }
 
-            let pkg = wkpkg.unwrap();
+            let current_work_package = current_work_package.unwrap();
 
-            //println!("Thread {}, work {:?}", i, pkg);
-            tx.send((i, pkg)).unwrap();
+            let mut pixels = Vec::new();
+
+            for y in current_work_package.ymin..current_work_package.ymax {
+                for x in current_work_package.xmin..current_work_package.xmax {
+                    let mut col = Vec3::same(0f32);
+
+                    for _ in 0..ns {
+                        let dx: f32 = rng.gen();
+                        let u = (x as f32 + dx) / nx as f32;
+
+                        let dy: f32 = rng.gen();
+                        let v = (y as f32 + dy) / ny as f32;
+
+                        let r = cam.ray_at(u, v);
+                        col += color(&r, &world, 0);
+                    }
+
+                    col /= ns as f32;
+                    col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
+                    let pixel_color = to_rgb8(col);
+                    pixels.push(pixel_color);
+                }
+            }
+
+            tx.send((i, current_work_package, pixels)).unwrap();
         });
         threads.push(thread);
-    }
-
-    loop {
-        let msg = rx.recv().unwrap();
-        println!("Thread {}, work {:?}", msg.0, msg.1);
     }
 
     for t in threads {
         t.join().unwrap();
     }
 
-    // println!("Domains : {:?}", domains);
+    tmr.end();
+    println!(
+        "Raytraced using {} threads, total time {} seconds",
+        THREAD_COUNT,
+        tmr.elapsed_seconds()
+    );
 
-    // let mut pixels = Vec::new();
-    // let mut rng = thread_rng();
+    std::mem::drop(tx);
 
-    // let lookfrom = Vec3::new(13f32, 2f32, 3f32);
-    // let lookat = Vec3::new(0f32, 0f32, 0f32);
-    // let dist_to_focus = 10f32;
-    // let aperture = 0.1f32;
+    let mut image_pixels = Vec::new();
+    image_pixels.resize((nx * ny) as usize, RGB8::new(0, 0, 0));
 
-    // let cam = Camera::new(
-    //     lookfrom,
-    //     lookat,
-    //     Vec3::new(0f32, 1f32, 0f32),
-    //     20f32,
-    //     nx as f32 / ny as f32,
-    //     aperture,
-    //     dist_to_focus,
-    // );
+    for (tid, wpkg, pixels) in rx {
+        println!("Merging work package {:?} from thread {}", wpkg, tid);
 
-    // let (world, materials) = random_scene();
+        // let fname = format!(
+        //     "wk_{}_{}_{}_{}.png",
+        //     wpkg.xmin, wpkg.xmax, wpkg.ymin, wpkg.ymax
+        // );
 
-    // let tmr = BasicTimer::new();
+        // write_image(&fname, wpkg.width() as u32, wpkg.height() as u32, &pixels)
+        //     .expect("Failed to write file!");
 
-    // for y in (window.ymin..window.ymax).rev() {
-    //     for x in window.xmin..window.xmax {
-    //         let mut col = Vec3::same(0f32);
+        let mut idx = 0;
+        for y in wpkg.ymin..wpkg.ymax {
+            for x in wpkg.xmin..wpkg.xmax {
+                image_pixels[((ny - y - 1) * nx + x) as usize] = pixels[idx];
+                idx += 1;
+            }
+        }
+    }
 
-    //         for _ in 0..ns {
-    //             let dx: f32 = rng.gen();
-    //             let u = (x as f32 + dx) / nx as f32;
-
-    //             let dy: f32 = rng.gen();
-    //             let v = (y as f32 + dy) / ny as f32;
-
-    //             let r = cam.ray_at(u, v);
-    //             col += color(&r, &world, 0);
-    //         }
-
-    //         col /= ns as f32;
-    //         col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
-    //         let pixel_color = to_rgb8(col);
-    //         pixels.push(pixel_color);
-    //     }
-    // }
-
-    // tmr.end();
-
-    // println!("Raytraced in {} seconds", tmr.elapsed_seconds());
-    // write_image("raytraced.png", nx as u32, ny as u32, &pixels).expect("Failed to write image!");
+    write_image("raytraced.png", nx as u32, ny as u32, &image_pixels)
+        .expect("Failed to write image!");
 }

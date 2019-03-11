@@ -2,16 +2,17 @@ use super::hitable::{HitRecord, Hitable};
 use super::material::Material;
 use super::ray::Ray;
 use super::vec3::{dot_product, Vec3};
-use std::rc::Rc;
+//use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct Sphere {
     pub center: Vec3,
     pub radius: f32,
-    pub mtl: Rc<Material>,
+    pub mtl: Arc<Material>,
 }
 
 impl Sphere {
-    pub fn new(center: Vec3, radius: f32, mtl: Rc<Material>) -> Sphere {
+    pub fn new(center: Vec3, radius: f32, mtl: Arc<Material>) -> Sphere {
         Sphere {
             center,
             radius,

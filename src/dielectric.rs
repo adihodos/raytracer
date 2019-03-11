@@ -1,9 +1,7 @@
 use super::hitable::HitRecord;
 use super::material::Material;
 use super::ray::Ray;
-use super::vec3::{
-    dot_product, random_in_unit_sphere, reflect, refract, schlick, unit_vector, Vec3,
-};
+use super::vec3::{dot_product, reflect, refract, schlick, Vec3};
 use rand::prelude::*;
 
 pub struct Dielectric {
