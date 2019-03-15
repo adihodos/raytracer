@@ -9,26 +9,33 @@ use std::thread;
 use rgb::RGB8;
 
 mod camera;
+mod checker_texture;
+mod constant_texture;
 mod dielectric;
 mod hitable;
 mod hitable_list;
 mod lambertian;
 mod material;
 mod metal;
+mod noise_texture;
 mod perlin;
 mod ray;
 mod sphere;
+mod texture;
 mod timer;
 mod vec3;
 mod window;
 
 use camera::Camera;
+use checker_texture::CheckerTexture;
+use constant_texture::ConstantTexture;
 use dielectric::Dielectric;
 use hitable::*;
 use hitable_list::HitableList;
 use lambertian::Lambertian;
 use material::Material;
 use metal::Metal;
+use noise_texture::NoiseTexture;
 use rand::prelude::*;
 use ray::Ray;
 use sphere::Sphere;
@@ -82,12 +89,20 @@ fn random_scene() -> (HitableList, Vec<Arc<Material>>) {
   let mut world = HitableList::new();
   let mut materials: Vec<Arc<Material>> = Vec::new();
 
-  materials.push(Arc::new(Lambertian::new(Vec3::new(0.5f32, 0.5f32, 0.5f32))));
+  let checker_tex = Arc::new(CheckerTexture::new(
+    Arc::new(ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32))),
+    Arc::new(ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32))),
+  ));
+
+  materials.push(Arc::new(Lambertian::new(checker_tex)));
+
+  let noise_tex = Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(8_f32))));
 
   world.add_object(Box::new(Sphere::new(
     Vec3::new(0f32, -1000f32, 0f32),
     1000f32,
-    materials[0].clone(),
+    // materials[0].clone(),
+    noise_tex.clone(),
   )));
 
   let mut rng = thread_rng();
@@ -106,11 +121,13 @@ fn random_scene() -> (HitableList, Vec<Arc<Material>>) {
         let mtl: Arc<Material> = if choose_mat < 0.8f32 {
           //
           // diffuse
-          Arc::new(Lambertian::new(Vec3::new(
+          let texture = Arc::new(ConstantTexture::new(Vec3::new(
             rng.gen::<f32>() * rng.gen::<f32>(),
             rng.gen::<f32>() * rng.gen::<f32>(),
             rng.gen::<f32>() * rng.gen::<f32>(),
-          )))
+          )));
+
+          Arc::new(Lambertian::new(texture))
         } else if choose_mat < 0.95f32 {
           //
           // metal
@@ -142,7 +159,9 @@ fn random_scene() -> (HitableList, Vec<Arc<Material>>) {
     mtl.clone(),
   )));
 
-  let mtl = Arc::new(Lambertian::new(Vec3::new(0.4f32, 0.2f32, 0.1f32)));
+  let mtl = Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(
+    Vec3::new(0.4f32, 0.2f32, 0.1f32),
+  ))));
   materials.push(mtl.clone());
   world.add_object(Box::new(Sphere::new(
     Vec3::new(-4f32, 1f32, 0f32),
@@ -188,143 +207,145 @@ fn test_perlin() {
 }
 
 fn main() {
-  test_perlin();
-  // let nx = 1200;
-  // let ny = 800;
-  // let ns = 10;
+  // test_perlin();
 
-  // let window = Window::new(0, nx, 0, ny);
-  // let lookfrom = Vec3::new(13f32, 2f32, 3f32);
-  // let lookat = Vec3::new(0f32, 0f32, 0f32);
-  // let dist_to_focus = 10f32;
-  // let aperture = 0.1f32;
+  let nx = 1200;
+  let ny = 800;
+  //let ns = 64;
+  const RAYS_PER_PIXEL: u32 = 16;
 
-  // let cam = Camera::new(
-  //   lookfrom,
-  //   lookat,
-  //   Vec3::new(0f32, 1f32, 0f32),
-  //   20f32,
-  //   nx as f32 / ny as f32,
-  //   aperture,
-  //   dist_to_focus,
-  // );
+  let window = Window::new(0, nx, 0, ny);
+  let lookfrom = Vec3::new(13f32, 2f32, 3f32);
+  let lookat = Vec3::new(0f32, 0f32, 0f32);
+  let dist_to_focus = 10f32;
+  let aperture = 0.1f32;
 
-  // let (world, _) = random_scene();
-  // let world = Arc::new(world);
+  let cam = Camera::new(
+    lookfrom,
+    lookat,
+    Vec3::new(0f32, 1f32, 0f32),
+    20f32,
+    nx as f32 / ny as f32,
+    aperture,
+    dist_to_focus,
+  );
 
-  // let domains = {
-  //   let mut d = Vec::new();
-  //   let work_x = window.width() / WORK_TILE_SIZE;
-  //   let work_y = window.height() / WORK_TILE_SIZE;
+  let (world, _) = random_scene();
+  let world = Arc::new(world);
 
-  //   println!("Work_x {} :: Work_y {}", work_x, work_y);
+  let domains = {
+    let mut d = Vec::new();
+    let work_x = window.width() / WORK_TILE_SIZE;
+    let work_y = window.height() / WORK_TILE_SIZE;
 
-  //   for y in 0..WORK_TILE_SIZE {
-  //     for x in 0..WORK_TILE_SIZE {
-  //       d.push(Window::new(
-  //         x * work_x,
-  //         (x + 1) * work_x,
-  //         y * work_y,
-  //         (y + 1) * work_y,
-  //       ));
-  //     }
-  //   }
+    println!("Work_x {} :: Work_y {}", work_x, work_y);
 
-  //   println!("Work packages {}", d.len());
-  //   Arc::new(Mutex::new(d))
-  // };
+    for y in 0..WORK_TILE_SIZE {
+      for x in 0..WORK_TILE_SIZE {
+        d.push(Window::new(
+          x * work_x,
+          (x + 1) * work_x,
+          y * work_y,
+          (y + 1) * work_y,
+        ));
+      }
+    }
 
-  // let (tx, rx) = mpsc::channel();
+    println!("Work packages {}", d.len());
+    Arc::new(Mutex::new(d))
+  };
 
-  // let mut threads = Vec::new();
+  let (tx, rx) = mpsc::channel();
 
-  // let tmr = BasicTimer::new();
+  let mut threads = Vec::new();
 
-  // for i in 0..THREAD_COUNT {
-  //   let work_packages = domains.clone();
-  //   let tx = tx.clone();
-  //   let world = world.clone();
+  let tmr = BasicTimer::new();
 
-  //   let thread = thread::spawn(move || loop {
-  //     let mut rng = thread_rng();
+  for i in 0..THREAD_COUNT {
+    let work_packages = domains.clone();
+    let tx = tx.clone();
+    let world = world.clone();
 
-  //     let current_work_package = {
-  //       let mut work_queue = work_packages.lock().unwrap();
-  //       work_queue.pop()
-  //     };
+    let thread = thread::spawn(move || loop {
+      let mut rng = thread_rng();
 
-  //     if !current_work_package.is_some() {
-  //       println!("Thread {} out of work, shutting down", i);
-  //       break;
-  //     }
+      let current_work_package = {
+        let mut work_queue = work_packages.lock().unwrap();
+        work_queue.pop()
+      };
 
-  //     let current_work_package = current_work_package.unwrap();
+      if !current_work_package.is_some() {
+        println!("Thread {} out of work, shutting down", i);
+        break;
+      }
 
-  //     let mut pixels = Vec::new();
+      let current_work_package = current_work_package.unwrap();
 
-  //     for y in current_work_package.ymin..current_work_package.ymax {
-  //       for x in current_work_package.xmin..current_work_package.xmax {
-  //         let mut col = Vec3::same(0f32);
+      let mut pixels = Vec::new();
 
-  //         for _ in 0..ns {
-  //           let dx: f32 = rng.gen();
-  //           let u = (x as f32 + dx) / nx as f32;
+      for y in current_work_package.ymin..current_work_package.ymax {
+        for x in current_work_package.xmin..current_work_package.xmax {
+          let mut col = Vec3::same(0f32);
 
-  //           let dy: f32 = rng.gen();
-  //           let v = (y as f32 + dy) / ny as f32;
+          for _ in 0..RAYS_PER_PIXEL {
+            let dx: f32 = rng.gen();
+            let u = (x as f32 + dx) / nx as f32;
 
-  //           let r = cam.ray_at(u, v);
-  //           col += color(&r, &world, 0);
-  //         }
+            let dy: f32 = rng.gen();
+            let v = (y as f32 + dy) / ny as f32;
 
-  //         col /= ns as f32;
-  //         col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
-  //         let pixel_color = to_rgb8(col);
-  //         pixels.push(pixel_color);
-  //       }
-  //     }
+            let r = cam.ray_at(u, v);
+            col += color(&r, &world, 0);
+          }
 
-  //     tx.send((i, current_work_package, pixels)).unwrap();
-  //   });
-  //   threads.push(thread);
-  // }
+          col /= RAYS_PER_PIXEL as f32;
+          col = Vec3::new(col.x.sqrt(), col.y.sqrt(), col.z.sqrt());
+          let pixel_color = to_rgb8(col);
+          pixels.push(pixel_color);
+        }
+      }
 
-  // for t in threads {
-  //   t.join().unwrap();
-  // }
+      tx.send((i, current_work_package, pixels)).unwrap();
+    });
+    threads.push(thread);
+  }
 
-  // tmr.end();
-  // println!(
-  //   "Raytraced using {} threads, total time {} seconds",
-  //   THREAD_COUNT,
-  //   tmr.elapsed_seconds()
-  // );
+  for t in threads {
+    t.join().unwrap();
+  }
 
-  // std::mem::drop(tx);
+  tmr.end();
+  println!(
+    "Raytraced using {} threads, total time {} seconds",
+    THREAD_COUNT,
+    tmr.elapsed_seconds()
+  );
 
-  // let mut image_pixels = Vec::new();
-  // image_pixels.resize((nx * ny) as usize, RGB8::new(0, 0, 0));
+  std::mem::drop(tx);
 
-  // for (tid, wpkg, pixels) in rx {
-  //   println!("Merging work package {:?} from thread {}", wpkg, tid);
+  let mut image_pixels = Vec::new();
+  image_pixels.resize((nx * ny) as usize, RGB8::new(0, 0, 0));
 
-  //   // let fname = format!(
-  //   //     "wk_{}_{}_{}_{}.png",
-  //   //     wpkg.xmin, wpkg.xmax, wpkg.ymin, wpkg.ymax
-  //   // );
+  for (tid, wpkg, pixels) in rx {
+    println!("Merging work package {:?} from thread {}", wpkg, tid);
 
-  //   // write_image(&fname, wpkg.width() as u32, wpkg.height() as u32, &pixels)
-  //   //     .expect("Failed to write file!");
+    // let fname = format!(
+    //     "wk_{}_{}_{}_{}.png",
+    //     wpkg.xmin, wpkg.xmax, wpkg.ymin, wpkg.ymax
+    // );
 
-  //   let mut idx = 0;
-  //   for y in wpkg.ymin..wpkg.ymax {
-  //     for x in wpkg.xmin..wpkg.xmax {
-  //       image_pixels[((ny - y - 1) * nx + x) as usize] = pixels[idx];
-  //       idx += 1;
-  //     }
-  //   }
-  // }
+    // write_image(&fname, wpkg.width() as u32, wpkg.height() as u32, &pixels)
+    //     .expect("Failed to write file!");
 
-  // write_image("raytraced.png", nx as u32, ny as u32, &image_pixels)
-  //   .expect("Failed to write image!");
+    let mut idx = 0;
+    for y in wpkg.ymin..wpkg.ymax {
+      for x in wpkg.xmin..wpkg.xmax {
+        image_pixels[((ny - y - 1) * nx + x) as usize] = pixels[idx];
+        idx += 1;
+      }
+    }
+  }
+
+  write_image("raytraced.png", nx as u32, ny as u32, &image_pixels)
+    .expect("Failed to write image!");
 }

@@ -122,3 +122,101 @@ impl SimplexNoise {
     70f32 * (n0 + n1 + n2)
   }
 }
+
+use super::vec3::Vec3;
+use rand::prelude::*;
+
+pub struct PerlinNoise {
+  randfloat: Vec<f32>,
+  perm_x: Vec<i32>,
+  perm_y: Vec<i32>,
+  perm_z: Vec<i32>,
+}
+
+fn gen_shuffled_vec(elements: u32) -> Vec<i32> {
+  let mut v = (0..elements).map(|i| i as i32).collect::<Vec<_>>();
+  let mut rng = thread_rng();
+  rng.shuffle(&mut v);
+
+  v
+}
+
+// struct TestArr {
+//   e : [i32; 8]
+// }
+
+// impl TestArr {
+//   pub fn new() -> TestArr {
+//     TestArr{e : [0, 1, 2, 3, 4, 5, 6, 7]}
+//   }
+// }
+
+// use std::ops::Index;
+
+// impl Index<(u32, u32, u32)> for TestArr {
+//   type Output = i32;
+
+//   fn index(&self, idx : (u32, u32, u32)) -> &i32 {
+//     &self.e[(idx.2 * 4 + idx.1 * 2 + idx.0) as usize]
+//   }
+// }
+
+fn trilinear_interp(c: &[[[f32; 2]; 2]], u: f32, v: f32, w: f32) -> f32 {
+  let mut accum = 0_f32;
+  for i in 0..2 {
+    for j in 0..2 {
+      for k in 0..2 {
+        accum += (i as f32 * u + (1 - i) as f32 * (1_f32 - u))
+          * (j as f32 * v + (1 - j) as f32 * (1_f32 - v))
+          * (k as f32 * w + (1 - k) as f32 * (1_f32 - w))
+          * c[i as usize][j as usize][k as usize];
+      }
+    }
+  }
+
+  accum
+}
+
+fn smooth(t: f32) -> f32 {
+  t * t * (3_f32 - 2_f32 * t)
+}
+
+impl PerlinNoise {
+  pub fn new() -> PerlinNoise {
+    let mut rng = thread_rng();
+
+    PerlinNoise {
+      randfloat: (0..256).map(|_| rng.gen::<f32>()).collect::<Vec<_>>(),
+      perm_x: gen_shuffled_vec(256),
+      perm_y: gen_shuffled_vec(256),
+      perm_z: gen_shuffled_vec(256),
+    }
+  }
+
+  pub fn noise(&self, p: Vec3) -> f32 {
+    let u = smooth(p.x - p.x.floor());
+    let v = smooth(p.y - p.y.floor());
+    let w = smooth(p.z - p.z.floor());
+
+    let i = p.x.floor() as i32;
+    let j = p.y.floor() as i32;
+    let k = p.z.floor() as i32;
+
+    let mut c: [[[f32; 2]; 2]; 2] = unsafe { std::mem::zeroed() };
+
+    for di in 0..2 {
+      for dj in 0..2 {
+        for dk in 0..2 {
+          let idx = self.perm_x[((i + di) & 255) as usize]
+            ^ self.perm_y[((j + dj) & 255) as usize]
+            ^ self.perm_z[((k + dk) & 255) as usize];
+
+          c[di as usize][dj as usize][dk as usize] =
+            self.randfloat[idx as usize];
+        }
+      }
+    }
+
+    trilinear_interp(&c, u, v, w)
+  }
+}
