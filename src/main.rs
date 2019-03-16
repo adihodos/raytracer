@@ -17,6 +17,7 @@ mod hitable_list;
 mod lambertian;
 mod material;
 mod metal;
+mod moving_sphere;
 mod noise_texture;
 mod perlin;
 mod ray;
@@ -35,6 +36,7 @@ use hitable_list::HitableList;
 use lambertian::Lambertian;
 use material::Material;
 use metal::Metal;
+use moving_sphere::MovingSphere;
 use noise_texture::NoiseTexture;
 use rand::prelude::*;
 use ray::Ray;
@@ -184,26 +186,26 @@ const THREAD_COUNT: i32 = 4;
 const WORK_TILE_SIZE: u32 = 4;
 
 fn test_perlin() {
-  const IMG_WIDTH: u32 = 1024;
-  const IMG_HEIGHT: u32 = 1024;
-  const FEATURE_SIZE: u32 = 128;
+  // const IMG_WIDTH: u32 = 1024;
+  // const IMG_HEIGHT: u32 = 1024;
+  // const FEATURE_SIZE: u32 = 128;
 
-  let mut pixels: Vec<RGB8> = Vec::new();
+  // let mut pixels: Vec<RGB8> = Vec::new();
 
-  let noise_gen = perlin::SimplexNoise::new();
+  // let noise_gen = perlin::SimplexNoise::new();
 
-  for y in 0..IMG_HEIGHT {
-    for x in 0..IMG_WIDTH {
-      let s = x as f32 / FEATURE_SIZE as f32;
-      let t = y as f32 / FEATURE_SIZE as f32;
+  // for y in 0..IMG_HEIGHT {
+  //   for x in 0..IMG_WIDTH {
+  //     let s = x as f32 / FEATURE_SIZE as f32;
+  //     let t = y as f32 / FEATURE_SIZE as f32;
 
-      let pixel = ((noise_gen.noise(s, t) + 1f32) * 127.5f32) as u8;
-      pixels.push(RGB8::new(pixel, 0, pixel));
-    }
-  }
+  //     let pixel = ((noise_gen.noise(s, t) + 1f32) * 127.5f32) as u8;
+  //     pixels.push(RGB8::new(pixel, 0, pixel));
+  //   }
+  // }
 
-  write_image("simplex.noise.png", IMG_WIDTH, IMG_HEIGHT, &pixels)
-    .expect("Failed to write image!");
+  // write_image("simplex.noise.png", IMG_WIDTH, IMG_HEIGHT, &pixels)
+  //   .expect("Failed to write image!");
 }
 
 fn main() {
@@ -228,6 +230,8 @@ fn main() {
     nx as f32 / ny as f32,
     aperture,
     dist_to_focus,
+    0_f32,
+    1_f32,
   );
 
   let (world, _) = random_scene();

@@ -43,9 +43,9 @@ impl Material for Dielectric {
       };
 
     if thread_rng().gen::<f32>() < reflect_prob {
-      Some((attenuation, Ray::new(h.p, reflected)))
+      Some((attenuation, Ray::new(h.p, reflected, r.time)))
     } else {
-      Some((attenuation, Ray::new(h.p, refracted.unwrap())))
+      Some((attenuation, Ray::new(h.p, refracted.unwrap(), r.time)))
     }
   }
 }
