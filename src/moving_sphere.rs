@@ -1,3 +1,4 @@
+use super::aabb::Aabb;
 use super::hitable::{HitRecord, Hitable};
 use super::material::Material;
 use super::ray::Ray;
@@ -66,6 +67,11 @@ impl Hitable for MovingSphere {
       }
     }
 
+    None
+  }
+
+  fn bounding_box(&self, t0: f32, t1: f32) -> Option<Aabb> {
+    //        Some(Aabb::new(self.center))
     None
   }
 }

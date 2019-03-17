@@ -1,3 +1,4 @@
+use super::aabb::Aabb;
 use super::hitable::*;
 use super::ray::Ray;
 
@@ -34,5 +35,26 @@ impl Hitable for HitableList {
     }
 
     result
+  }
+
+  fn bounding_box(&self, t0: f32, t1: f32) -> Option<Aabb> {
+    if self.objects.len() == 0 {
+      return None;
+    }
+
+    if let Some(bbox) = self.objects[0].bounding_box(t0, t1) {
+      let merged_bbox =
+        self.objects.iter().skip(1).fold(bbox, |curr_box, obj| {
+          if let Some(obj_box) = obj.bounding_box(t0, t1) {
+            Aabb::merge(&curr_box, &obj_box)
+          } else {
+            curr_box
+          }
+        });
+
+      Some(merged_bbox)
+    } else {
+      None
+    }
   }
 }

@@ -8,6 +8,7 @@ use std::thread;
 
 use rgb::RGB8;
 
+mod aabb;
 mod camera;
 mod checker_texture;
 mod constant_texture;

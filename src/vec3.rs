@@ -1,8 +1,11 @@
 use rand::prelude::*;
 use rgb::RGB8;
 use std::ops::{
-  Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
+  Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub,
+  SubAssign,
 };
+
+use std::cmp::PartialEq;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Vec3 {
@@ -26,6 +29,36 @@ impl Vec3 {
 
   pub fn length(&self) -> f32 {
     self.squared_length().sqrt()
+  }
+}
+
+impl PartialEq for Vec3 {
+  fn eq(&self, rhs: &Vec3) -> bool {
+    self.x == rhs.x && self.y == rhs.y && self.z == rhs.z
+  }
+}
+
+impl Index<usize> for Vec3 {
+  type Output = f32;
+
+  fn index(&self, idx: usize) -> &f32 {
+    match idx {
+      0 => &self.x,
+      1 => &self.y,
+      2 => &self.z,
+      _ => panic!("Out of bounds index"),
+    }
+  }
+}
+
+impl IndexMut<usize> for Vec3 {
+  fn index_mut(&mut self, idx: usize) -> &mut f32 {
+    match idx {
+      0 => &mut self.x,
+      1 => &mut self.y,
+      2 => &mut self.z,
+      _ => panic!("Out of bounds index"),
+    }
   }
 }
 
@@ -225,4 +258,29 @@ pub fn schlick(cosine: f32, ref_idx: f32) -> f32 {
   let r0 = (1f32 - ref_idx) / (1f32 + ref_idx);
   let r0 = r0 * r0;
   r0 + (1f32 - r0) * (1f32 - cosine).powf(5f32)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_vec_index() {
+    let a = Vec3::new(1_f32, 0_f32, 2_f32);
+    assert_eq!(a[0], 1_f32);
+    assert_eq!(a[1], 0_f32);
+    assert_eq!(a[2], 2_f32);
+  }
+
+  #[test]
+  fn test_vec_index_mut() {
+    let mut v = Vec3::new(1_f32, 2_f32, 3_f32);
+    v[0] *= 2_f32;
+    v[1] *= 2_f32;
+    v[2] *= 2_f32;
+
+    assert_eq!(2_f32, v[0]);
+    assert_eq!(4_f32, v[1]);
+    assert_eq!(6_f32, v[2]);
+  }
 }

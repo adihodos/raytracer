@@ -1,8 +1,8 @@
+use super::aabb::Aabb;
 use super::hitable::{HitRecord, Hitable};
 use super::material::Material;
 use super::ray::Ray;
 use super::vec3::{dot_product, Vec3};
-//use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct Sphere {
@@ -49,5 +49,12 @@ impl Hitable for Sphere {
     }
 
     None
+  }
+
+  fn bounding_box(&self, t0: f32, t1: f32) -> Option<Aabb> {
+    Some(Aabb::new(
+      self.center - Vec3::same(self.radius),
+      self.center + Vec3::same(self.radius),
+    ))
   }
 }
