@@ -17,6 +17,7 @@ use super::vec3::Vec3;
 //   }
 // }
 
+#[derive(Copy, Clone, Debug)]
 pub struct Aabb {
   pub min: Vec3,
   pub max: Vec3,
