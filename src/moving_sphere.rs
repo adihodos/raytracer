@@ -2,6 +2,7 @@ use super::aabb::Aabb;
 use super::hitable::{HitRecord, Hitable};
 use super::material::Material;
 use super::ray::Ray;
+use super::sphere::get_sphere_uv;
 use super::vec3::{dot_product, Vec3};
 use std::sync::Arc;
 
@@ -54,16 +55,18 @@ impl Hitable for MovingSphere {
       if (temp < t_max) && (temp > t_min) {
         let p = r.point_at_param(temp);
         let n = (p - self.center(r.time)) / self.radius;
+        let (u, v) = get_sphere_uv(p);
 
-        return Some(HitRecord::new(temp, p, n, self.mtl.clone()));
+        return Some(HitRecord::new(temp, p, n, self.mtl.clone(), u, v));
       }
 
       let temp = (-b + (b * b - a * c).sqrt()) / a;
       if (temp < t_max) && (temp > t_min) {
         let p = r.point_at_param(temp);
         let n = (p - self.center(r.time)) / self.radius;
+        let (u, v) = get_sphere_uv(p);
 
-        return Some(HitRecord::new(temp, p, n, self.mtl.clone()));
+        return Some(HitRecord::new(temp, p, n, self.mtl.clone(), u, v));
       }
     }
 

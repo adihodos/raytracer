@@ -16,6 +16,7 @@ mod camera;
 mod checker_texture;
 mod constant_texture;
 mod dielectric;
+mod diffuse_light;
 mod hitable;
 mod hitable_list;
 mod lambertian;
@@ -30,12 +31,14 @@ mod texture;
 mod timer;
 mod vec3;
 mod window;
+mod xy_rect;
 
 use bvh_node::BvhNode;
 use camera::Camera;
 use checker_texture::CheckerTexture;
 use constant_texture::ConstantTexture;
 use dielectric::Dielectric;
+use diffuse_light::DiffuseLight;
 use hitable::*;
 use hitable_list::HitableList;
 use lambertian::Lambertian;
@@ -49,6 +52,7 @@ use sphere::Sphere;
 use timer::BasicTimer;
 use vec3::{to_rgb8, Vec3};
 use window::Window;
+use xy_rect::XYRect;
 
 fn write_image(
   filename: &str,
@@ -78,18 +82,23 @@ fn write_image(
 
 fn color(r: &Ray, world: &Arc<Hitable>, depth: i32) -> Vec3 {
   if let Some(hit) = world.hit(r, 0.001f32, std::f32::MAX) {
+    let emitted = hit.mtl.emitted(hit.u, hit.v, hit.p);
     if depth < 50 {
       if let Some((attn, scattered)) = hit.mtl.scatter(r, &hit) {
-        return attn * color(&scattered, world, depth + 1);
+        emitted + attn * color(&scattered, world, depth + 1)
+      } else {
+        emitted
       }
+    } else {
+      emitted
     }
-
-    return Vec3::same(0f32);
+  } else {
+    Vec3::same(0f32)
   }
 
-  let unit_direction = vec3::unit_vector(r.direction);
-  let t = 0.5f32 * (unit_direction.y + 1f32);
-  (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
+  // let unit_direction = vec3::unit_vector(r.direction);
+  // let t = 0.5f32 * (unit_direction.y + 1f32);
+  // (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
 }
 
 struct WorldBuilder {}
@@ -312,6 +321,41 @@ impl WorldBuilder {
 
     Arc::new(world)
   }
+
+  fn simple_light() -> Arc<Hitable> {
+    let perlin_tex =
+      Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(4_f32))));
+    let light_mtl = Arc::new(DiffuseLight::new(Arc::new(
+      ConstantTexture::new(Vec3::same(4_f32)),
+    )));
+
+    let mut world = HitableList::new();
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, -1000_f32, 0_f32),
+      1000_f32,
+      perlin_tex.clone(),
+    )));
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, 2_f32, 0_f32),
+      2_f32,
+      perlin_tex.clone(),
+    )));
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, 7_f32, 0_f32),
+      2_f32,
+      light_mtl.clone(),
+    )));
+    world.add_object(Box::new(XYRect::new(
+      3_f32,
+      5_f32,
+      1_f32,
+      3_f32,
+      -2_f32,
+      light_mtl.clone(),
+    )));
+
+    Arc::new(world)
+  }
 }
 
 const THREAD_COUNT: i32 = 4;
@@ -343,7 +387,8 @@ fn main() {
   let world =
         //WorldBuilder::two_perlin_spheres();
     //        WorldBuilder::random_world2();
-        WorldBuilder::two_spheres();
+    //        WorldBuilder::two_spheres();
+        WorldBuilder::simple_light();
 
   let domains = {
     let mut d = Vec::new();
