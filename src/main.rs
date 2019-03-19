@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate png;
 extern crate rand;
 extern crate rgb;
@@ -29,6 +31,7 @@ mod timer;
 mod vec3;
 mod window;
 
+use bvh_node::BvhNode;
 use camera::Camera;
 use checker_texture::CheckerTexture;
 use constant_texture::ConstantTexture;
@@ -73,7 +76,7 @@ fn write_image(
   Ok(())
 }
 
-fn color(r: &Ray, world: &HitableList, depth: i32) -> Vec3 {
+fn color(r: &Ray, world: &Arc<Hitable>, depth: i32) -> Vec3 {
   if let Some(hit) = world.hit(r, 0.001f32, std::f32::MAX) {
     if depth < 50 {
       if let Some((attn, scattered)) = hit.mtl.scatter(r, &hit) {
@@ -89,134 +92,235 @@ fn color(r: &Ray, world: &HitableList, depth: i32) -> Vec3 {
   (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
 }
 
-fn random_scene() -> (HitableList, Vec<Arc<Material>>) {
-  let mut world = HitableList::new();
-  let mut materials: Vec<Arc<Material>> = Vec::new();
+struct WorldBuilder {}
 
-  let checker_tex = Arc::new(CheckerTexture::new(
-    Arc::new(ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32))),
-    Arc::new(ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32))),
-  ));
+impl WorldBuilder {
+  pub fn random_world() -> Arc<Hitable> {
+    let mut world: Vec<Arc<Hitable>> = vec![];
 
-  materials.push(Arc::new(Lambertian::new(checker_tex)));
+    let checker = {
+      let odd = ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32));
+      let even = ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32));
 
-  let noise_tex = Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(8_f32))));
+      Arc::new(CheckerTexture::new(Arc::new(odd), Arc::new(even)))
+    };
 
-  world.add_object(Box::new(Sphere::new(
-    Vec3::new(0f32, -1000f32, 0f32),
-    1000f32,
-    // materials[0].clone(),
-    noise_tex.clone(),
-  )));
+    world.push(Arc::new(Sphere::new(
+      Vec3::new(0_f32, -1000_f32, 0_f32),
+      100_f32,
+      Arc::new(Lambertian::new(checker)),
+    )));
 
-  let mut rng = thread_rng();
+    let mut rng = thread_rng();
 
-  for a in -11..11 {
-    for b in -11..11 {
-      let choose_mat = rng.gen::<f32>();
+    for a in -10..10 {
+      for b in -10..10 {
+        let choose_mat = rng.gen::<f32>();
 
-      let center = Vec3::new(
-        a as f32 + 0.9f32 * rng.gen::<f32>(),
-        0.2f32,
-        b as f32 + 0.9f32 * rng.gen::<f32>(),
-      );
+        let center = Vec3::new(
+          a as f32 + 0.9_f32 * rng.gen::<f32>(),
+          0.2_f32,
+          b as f32 + 0.9_f32 * rng.gen::<f32>(),
+        );
 
-      if (center - Vec3::new(4f32, 0.2f32, 0f32)).length() > 0.9f32 {
-        let mtl: Arc<Material> = if choose_mat < 0.8f32 {
-          //
-          // diffuse
-          let texture = Arc::new(ConstantTexture::new(Vec3::new(
-            rng.gen::<f32>() * rng.gen::<f32>(),
-            rng.gen::<f32>() * rng.gen::<f32>(),
-            rng.gen::<f32>() * rng.gen::<f32>(),
-          )));
+        if (center - Vec3::new(4_f32, 0.2_f32, 0_f32)).length() > 0.9_f32 {
+          if choose_mat < 0.8_f32 {
+            //
+            // diffuse
+            let color = Vec3::new(
+              rng.gen::<f32>() * rng.gen::<f32>(),
+              rng.gen::<f32>() * rng.gen::<f32>(),
+              rng.gen::<f32>() * rng.gen::<f32>(),
+            );
 
-          Arc::new(Lambertian::new(texture))
-        } else if choose_mat < 0.95f32 {
-          //
-          // metal
-          Arc::new(Metal::new(
-            Vec3::new(
-              0.5f32 * (1f32 + rng.gen::<f32>()),
-              0.5f32 * (1f32 + rng.gen::<f32>()),
-              0.5f32 * (1f32 + rng.gen::<f32>()),
-            ),
-            0.5f32 * rng.gen::<f32>(),
-          ))
-        } else {
-          //
-          // glass
-          Arc::new(Dielectric::new(1.5f32))
-        };
+            let const_tex =
+              Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(color))));
 
-        materials.push(mtl.clone());
-        world.add_object(Box::new(Sphere::new(center, 0.2f32, mtl.clone())));
+            world.push(Arc::new(Sphere::new(center, 0.2_f32, const_tex)));
+          } else if choose_mat < 0.95_f32 {
+            //
+            // metal
+            let color = Vec3::new(
+              0.5_f32 * (1_f32 + rng.gen::<f32>()),
+              0.5_f32 * (1_f32 + rng.gen::<f32>()),
+              0.5_f32 * (1_f32 + rng.gen::<f32>()),
+            );
+
+            let mtl = Arc::new(Metal::new(color, 0.5_f32 * rng.gen::<f32>()));
+
+            world.push(Arc::new(Sphere::new(center, 0.2_f32, mtl)));
+          } else {
+            //
+            // glass
+            let mtl = Arc::new(Dielectric::new(1.5_f32));
+            world.push(Arc::new(Sphere::new(center, 0.3f32, mtl)));
+          }
+        }
       }
     }
+
+    world.push(Arc::new(Sphere::new(
+      Vec3::new(0_f32, 1_f32, 0_f32),
+      1_f32,
+      Arc::new(Dielectric::new(1.5_f32)),
+    )));
+
+    world.push(Arc::new(Sphere::new(
+      Vec3::new(-4_f32, 1_f32, 0_f32),
+      1_f32,
+      Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(Vec3::new(
+        0.4_f32, 0.2_f32, 0.1_f32,
+      ))))),
+    )));
+
+    world.push(Arc::new(Sphere::new(
+      Vec3::new(4_f32, 1_f32, 0_f32),
+      1_f32,
+      Arc::new(Metal::new(Vec3::new(0.7_f32, 0.6_f32, 0.5_f32), 0_f32)),
+    )));
+
+    BvhNode::new(&mut world, 0_f32, 1_f32)
   }
 
-  let mtl = Arc::new(Dielectric::new(1.5f32));
-  materials.push(mtl.clone());
-  world.add_object(Box::new(Sphere::new(
-    Vec3::new(0f32, 1f32, 0f32),
-    1f32,
-    mtl.clone(),
-  )));
+  fn random_world2() -> Arc<Hitable> {
+    let mut world = HitableList::new();
 
-  let mtl = Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(
-    Vec3::new(0.4f32, 0.2f32, 0.1f32),
-  ))));
-  materials.push(mtl.clone());
-  world.add_object(Box::new(Sphere::new(
-    Vec3::new(-4f32, 1f32, 0f32),
-    1f32,
-    mtl.clone(),
-  )));
+    // let checker_tex = Arc::new(CheckerTexture::new(
+    //   Arc::new(ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32))),
+    //   Arc::new(ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32))),
+    // ));
 
-  let mtl = Arc::new(Metal::new(Vec3::new(0.7f32, 0.6f32, 0.5f32), 0f32));
-  materials.push(mtl.clone());
-  world.add_object(Box::new(Sphere::new(
-    Vec3::new(4f32, 1f32, 0f32),
-    1f32,
-    mtl.clone(),
-  )));
+    let noise_tex =
+      Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(8_f32))));
 
-  (world, materials)
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0f32, -1000f32, 0f32),
+      1000f32,
+      noise_tex.clone(),
+    )));
+
+    let mut rng = thread_rng();
+
+    for a in -11..11 {
+      for b in -11..11 {
+        let choose_mat = rng.gen::<f32>();
+
+        let center = Vec3::new(
+          a as f32 + 0.9f32 * rng.gen::<f32>(),
+          0.2f32,
+          b as f32 + 0.9f32 * rng.gen::<f32>(),
+        );
+
+        if (center - Vec3::new(4f32, 0.2f32, 0f32)).length() > 0.9f32 {
+          let mtl: Arc<Material> = if choose_mat < 0.8f32 {
+            //
+            // diffuse
+            let texture = Arc::new(ConstantTexture::new(Vec3::new(
+              rng.gen::<f32>() * rng.gen::<f32>(),
+              rng.gen::<f32>() * rng.gen::<f32>(),
+              rng.gen::<f32>() * rng.gen::<f32>(),
+            )));
+
+            Arc::new(Lambertian::new(texture))
+          } else if choose_mat < 0.95f32 {
+            //
+            // metal
+            Arc::new(Metal::new(
+              Vec3::new(
+                0.5f32 * (1f32 + rng.gen::<f32>()),
+                0.5f32 * (1f32 + rng.gen::<f32>()),
+                0.5f32 * (1f32 + rng.gen::<f32>()),
+              ),
+              0.5f32 * rng.gen::<f32>(),
+            ))
+          } else {
+            //
+            // glass
+            Arc::new(Dielectric::new(1.5f32))
+          };
+
+          world.add_object(Box::new(Sphere::new(center, 0.2f32, mtl)));
+        }
+      }
+    }
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0f32, 1f32, 0f32),
+      1f32,
+      Arc::new(Dielectric::new(1.5f32)),
+    )));
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(-4f32, 1f32, 0f32),
+      1f32,
+      Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(Vec3::new(
+        0.4f32, 0.2f32, 0.1f32,
+      ))))),
+    )));
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(4f32, 1f32, 0f32),
+      1f32,
+      Arc::new(Metal::new(Vec3::new(0.7f32, 0.6f32, 0.5f32), 0f32)),
+    )));
+
+    Arc::new(world)
+  }
+
+  fn two_perlin_spheres() -> Arc<Hitable> {
+    let perlin_tex =
+      Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(4_f32))));
+    let mut world = HitableList::new();
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, -1000_f32, 0_f32),
+      1000_f32,
+      perlin_tex.clone(),
+    )));
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, 2_f32, 0_f32),
+      2_f32,
+      perlin_tex.clone(),
+    )));
+
+    Arc::new(world)
+  }
+
+  fn two_spheres() -> Arc<Hitable> {
+    let odd =
+      Arc::new(ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32)));
+    let even =
+      Arc::new(ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32)));
+    let checker_texture = Arc::new(CheckerTexture::new(odd, even));
+
+    let checker_mtl = Arc::new(Lambertian::new(checker_texture));
+
+    let mut world = HitableList::new();
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, -10_f32, 0_f32),
+      10_f32,
+      checker_mtl.clone(),
+    )));
+
+    world.add_object(Box::new(Sphere::new(
+      Vec3::new(0_f32, 10_f32, 0_f32),
+      10_f32,
+      checker_mtl.clone(),
+    )));
+
+    Arc::new(world)
+  }
 }
 
 const THREAD_COUNT: i32 = 4;
 const WORK_TILE_SIZE: u32 = 4;
 
-fn test_perlin() {
-  // const IMG_WIDTH: u32 = 1024;
-  // const IMG_HEIGHT: u32 = 1024;
-  // const FEATURE_SIZE: u32 = 128;
-
-  // let mut pixels: Vec<RGB8> = Vec::new();
-
-  // let noise_gen = perlin::SimplexNoise::new();
-
-  // for y in 0..IMG_HEIGHT {
-  //   for x in 0..IMG_WIDTH {
-  //     let s = x as f32 / FEATURE_SIZE as f32;
-  //     let t = y as f32 / FEATURE_SIZE as f32;
-
-  //     let pixel = ((noise_gen.noise(s, t) + 1f32) * 127.5f32) as u8;
-  //     pixels.push(RGB8::new(pixel, 0, pixel));
-  //   }
-  // }
-
-  // write_image("simplex.noise.png", IMG_WIDTH, IMG_HEIGHT, &pixels)
-  //   .expect("Failed to write image!");
-}
-
 fn main() {
-  // test_perlin();
-
   let nx = 1200;
   let ny = 800;
-  //let ns = 64;
-  const RAYS_PER_PIXEL: u32 = 16;
+  const RAYS_PER_PIXEL: u32 = 64;
 
   let window = Window::new(0, nx, 0, ny);
   let lookfrom = Vec3::new(13f32, 2f32, 3f32);
@@ -236,8 +340,10 @@ fn main() {
     1_f32,
   );
 
-  let (world, _) = random_scene();
-  let world = Arc::new(world);
+  let world =
+        //WorldBuilder::two_perlin_spheres();
+    //        WorldBuilder::random_world2();
+        WorldBuilder::two_spheres();
 
   let domains = {
     let mut d = Vec::new();
@@ -334,14 +440,6 @@ fn main() {
 
   for (tid, wpkg, pixels) in rx {
     println!("Merging work package {:?} from thread {}", wpkg, tid);
-
-    // let fname = format!(
-    //     "wk_{}_{}_{}_{}.png",
-    //     wpkg.xmin, wpkg.xmax, wpkg.ymin, wpkg.ymax
-    // );
-
-    // write_image(&fname, wpkg.width() as u32, wpkg.height() as u32, &pixels)
-    //     .expect("Failed to write file!");
 
     let mut idx = 0;
     for y in wpkg.ymin..wpkg.ymax {
