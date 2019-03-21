@@ -44,7 +44,7 @@ impl Hitable for Sphere {
       if (temp < t_max) && (temp > t_min) {
         let p = r.point_at_param(temp);
         let n = (p - self.center) / self.radius;
-        let (u, v) = get_sphere_uv(p);
+        let (u, v) = get_sphere_uv(n);
 
         return Some(HitRecord::new(temp, p, n, self.mtl.clone(), u, v));
       }
@@ -53,7 +53,7 @@ impl Hitable for Sphere {
       if (temp < t_max) && (temp > t_min) {
         let p = r.point_at_param(temp);
         let n = (p - self.center) / self.radius;
-        let (u, v) = get_sphere_uv(p);
+        let (u, v) = get_sphere_uv(n);
 
         return Some(HitRecord::new(temp, p, n, self.mtl.clone(), u, v));
       }
@@ -62,7 +62,7 @@ impl Hitable for Sphere {
     None
   }
 
-  fn bounding_box(&self, t0: f32, t1: f32) -> Option<Aabb> {
+  fn bounding_box(&self, _t0: f32, _t1: f32) -> Option<Aabb> {
     Some(Aabb::new(
       self.center - Vec3::same(self.radius),
       self.center + Vec3::same(self.radius),

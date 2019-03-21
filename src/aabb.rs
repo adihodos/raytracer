@@ -1,21 +1,21 @@
 use super::ray::Ray;
 use super::vec3::Vec3;
 
-// fn ffmin(a: f32, b: f32) -> f32 {
-//   if a < b {
-//     a
-//   } else {
-//     b
-//   }
-// }
+fn ffmin(a: f32, b: f32) -> f32 {
+  if a < b {
+    a
+  } else {
+    b
+  }
+}
 
-// fn ffmax(a: f32, b: f32) -> f32 {
-//   if a > b {
-//     a
-//   } else {
-//     b
-//   }
-// }
+fn ffmax(a: f32, b: f32) -> f32 {
+  if a > b {
+    a
+  } else {
+    b
+  }
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct Aabb {
@@ -32,17 +32,37 @@ impl Aabb {
     let mut tmin = tmin;
     let mut tmax = tmax;
 
+    // for a in 0..3 {
+    //   let invd = 1_f32 / r.direction[a as usize];
+    //   let mut t0 = invd * (self.min[a as usize] - r.origin[a as usize]);
+    //   let mut t1 = invd * (self.max[a as usize] - r.origin[a as usize]);
+
+    //   if invd < 0_f32 {
+    //     t0 = std::mem::replace(&mut t1, t0);
+    //   }
+
+    //   tmin = if t0 > tmin { t0 } else { tmin };
+    //   tmax = if t1 < tmax { t1 } else { tmax };
+
+    //   if tmax <= tmin {
+    //     return false;
+    //   }
+    // }
+
+    // true
+
     for a in 0..3 {
-      let invd = 1_f32 / r.direction[a as usize];
-      let mut t0 = invd * (self.min[a as usize] - r.origin[a as usize]);
-      let mut t1 = invd * (self.max[a as usize] - r.origin[a as usize]);
+      let t0 = ffmin(
+        (self.min[a as usize] - r.origin[a as usize]) / r.direction[a as usize],
+        (self.max[a as usize] - r.origin[a as usize]) / r.direction[a as usize],
+      );
+      let t1 = ffmax(
+        (self.min[a as usize] - r.origin[a as usize]) / r.direction[a as usize],
+        (self.max[a as usize] - r.origin[a as usize]) / r.direction[a as usize],
+      );
 
-      if invd < 0_f32 {
-        t0 = std::mem::replace(&mut t1, t0);
-      }
-
-      tmin = if t0 > tmin { t0 } else { tmin };
-      tmax = if t1 < tmax { t1 } else { tmax };
+      tmin = ffmax(t0, tmin);
+      tmax = ffmin(t1, tmax);
 
       if tmax <= tmin {
         return false;

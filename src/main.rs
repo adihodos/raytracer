@@ -17,6 +17,7 @@ mod checker_texture;
 mod constant_texture;
 mod dielectric;
 mod diffuse_light;
+mod flip_normals;
 mod hitable;
 mod hitable_list;
 mod lambertian;
@@ -41,6 +42,7 @@ use checker_texture::CheckerTexture;
 use constant_texture::ConstantTexture;
 use dielectric::Dielectric;
 use diffuse_light::DiffuseLight;
+use flip_normals::FlipNormals;
 use hitable::*;
 use hitable_list::HitableList;
 use lambertian::Lambertian;
@@ -96,11 +98,11 @@ fn color(r: &Ray, world: &Arc<Hitable>, depth: i32) -> Vec3 {
     return emitted;
   }
 
-  //Vec3::same(0_f32)
+  Vec3::same(0_f32)
 
-  let unit_direction = vec3::unit_vector(r.direction);
-  let t = 0.5f32 * (unit_direction.y + 1f32);
-  (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
+  // let unit_direction = vec3::unit_vector(r.direction);
+  // let t = 0.5f32 * (unit_direction.y + 1f32);
+  // (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
 }
 
 struct WorldBuilder {}
@@ -299,17 +301,28 @@ impl WorldBuilder {
     ))));
 
     let mut world = HitableList::new();
-    world.add_object(Arc::new(YZRect::new(
+
+    world.add_object(Arc::new(FlipNormals::new(Arc::new(YZRect::new(
       0_f32, 555_f32, 0_f32, 555_f32, 555_f32, green,
-    )));
+    )))));
 
     world.add_object(Arc::new(YZRect::new(
       0_f32, 555_f32, 0_f32, 555_f32, 0_f32, red,
     )));
 
     world.add_object(Arc::new(XZRect::new(
-      213_f32, 343_f32, 227_f32, 332_f32, 554_f32, light,
+      //213_f32, 343_f32, 227_f32, 332_f32, 554_f32, light,
+      123_f32, 423_f32, 147_f32, 412_f32, 554_f32, light,
     )));
+
+    world.add_object(Arc::new(FlipNormals::new(Arc::new(XZRect::new(
+      0_f32,
+      555_f32,
+      0_f32,
+      555_f32,
+      555_f32,
+      white.clone(),
+    )))));
 
     world.add_object(Arc::new(XZRect::new(
       0_f32,
@@ -320,14 +333,14 @@ impl WorldBuilder {
       white.clone(),
     )));
 
-    world.add_object(Arc::new(XZRect::new(
+    world.add_object(Arc::new(FlipNormals::new(Arc::new(XYRect::new(
       0_f32,
       555_f32,
       0_f32,
       555_f32,
       555_f32,
       white.clone(),
-    )));
+    )))));
 
     let cam_params = {
       let mut cp = CameraParameters::default();
@@ -376,9 +389,9 @@ fn main() {
         //WorldBuilder::two_perlin_spheres();
 //            WorldBuilder::random_world();
   //          WorldBuilder::two_spheres();
-          WorldBuilder::random_world_bvh();
+          //WorldBuilder::random_world_bvh();
   //            WorldBuilder::simple_light();
-  //    WorldBuilder::cornell_box();
+    WorldBuilder::cornell_box();
 
   let cam = Camera::new(
     cam_params.lookfrom,
