@@ -16,6 +16,24 @@ pub struct Camera {
   time1: f32,
 }
 
+#[derive(Copy, Debug, Clone)]
+pub struct CameraParameters {
+  pub lookfrom: Vec3,
+  pub lookat: Vec3,
+  pub world_up: Vec3,
+  pub field_of_view: f32,
+  pub aperture: f32,
+  pub focus_dist: f32,
+  pub time0: f32,
+  pub time1: f32,
+}
+
+impl Default for CameraParameters {
+  fn default() -> CameraParameters {
+    unsafe { std::mem::zeroed() }
+  }
+}
+
 impl Camera {
   pub fn new(
     lookfrom: Vec3,

@@ -1,9 +1,10 @@
 use super::aabb::Aabb;
 use super::hitable::*;
 use super::ray::Ray;
+use std::sync::Arc;
 
 pub struct HitableList {
-  objects: Vec<Box<Hitable>>,
+  objects: Vec<Arc<Hitable>>,
 }
 
 impl HitableList {
@@ -13,12 +14,20 @@ impl HitableList {
     }
   }
 
-  pub fn add_object(&mut self, obj: Box<Hitable>) {
+  pub fn add_object(&mut self, obj: Arc<Hitable>) {
     self.objects.push(obj);
   }
 
   pub fn size(&self) -> usize {
     self.objects.len()
+  }
+
+  pub fn as_slice(&self) -> &[Arc<Hitable>] {
+    self.objects.as_slice()
+  }
+
+  pub fn as_mut_slice(&mut self) -> &mut [Arc<Hitable>] {
+    self.objects.as_mut_slice()
   }
 }
 

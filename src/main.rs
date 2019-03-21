@@ -32,9 +32,11 @@ mod timer;
 mod vec3;
 mod window;
 mod xy_rect;
+mod xz_rect;
+mod yz_rect;
 
 use bvh_node::BvhNode;
-use camera::Camera;
+use camera::{Camera, CameraParameters};
 use checker_texture::CheckerTexture;
 use constant_texture::ConstantTexture;
 use dielectric::Dielectric;
@@ -53,6 +55,8 @@ use timer::BasicTimer;
 use vec3::{to_rgb8, Vec3};
 use window::Window;
 use xy_rect::XYRect;
+use xz_rect::XZRect;
+use yz_rect::YZRect;
 
 fn write_image(
   filename: &str,
@@ -85,124 +89,30 @@ fn color(r: &Ray, world: &Arc<Hitable>, depth: i32) -> Vec3 {
     let emitted = hit.mtl.emitted(hit.u, hit.v, hit.p);
     if depth < 50 {
       if let Some((attn, scattered)) = hit.mtl.scatter(r, &hit) {
-        emitted + attn * color(&scattered, world, depth + 1)
-      } else {
-        emitted
+        return emitted + attn * color(&scattered, world, depth + 1);
       }
-    } else {
-      emitted
     }
-  } else {
-    Vec3::same(0f32)
+
+    return emitted;
   }
 
-  // let unit_direction = vec3::unit_vector(r.direction);
-  // let t = 0.5f32 * (unit_direction.y + 1f32);
-  // (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
+  //Vec3::same(0_f32)
+
+  let unit_direction = vec3::unit_vector(r.direction);
+  let t = 0.5f32 * (unit_direction.y + 1f32);
+  (1f32 - t) * Vec3::new(1f32, 1f32, 1f32) + t * Vec3::new(0.5f32, 0.7f32, 1f32)
 }
 
 struct WorldBuilder {}
 
 impl WorldBuilder {
-  pub fn random_world() -> Arc<Hitable> {
-    let mut world: Vec<Arc<Hitable>> = vec![];
-
-    let checker = {
-      let odd = ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32));
-      let even = ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32));
-
-      Arc::new(CheckerTexture::new(Arc::new(odd), Arc::new(even)))
-    };
-
-    world.push(Arc::new(Sphere::new(
-      Vec3::new(0_f32, -1000_f32, 0_f32),
-      100_f32,
-      Arc::new(Lambertian::new(checker)),
-    )));
-
-    let mut rng = thread_rng();
-
-    for a in -10..10 {
-      for b in -10..10 {
-        let choose_mat = rng.gen::<f32>();
-
-        let center = Vec3::new(
-          a as f32 + 0.9_f32 * rng.gen::<f32>(),
-          0.2_f32,
-          b as f32 + 0.9_f32 * rng.gen::<f32>(),
-        );
-
-        if (center - Vec3::new(4_f32, 0.2_f32, 0_f32)).length() > 0.9_f32 {
-          if choose_mat < 0.8_f32 {
-            //
-            // diffuse
-            let color = Vec3::new(
-              rng.gen::<f32>() * rng.gen::<f32>(),
-              rng.gen::<f32>() * rng.gen::<f32>(),
-              rng.gen::<f32>() * rng.gen::<f32>(),
-            );
-
-            let const_tex =
-              Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(color))));
-
-            world.push(Arc::new(Sphere::new(center, 0.2_f32, const_tex)));
-          } else if choose_mat < 0.95_f32 {
-            //
-            // metal
-            let color = Vec3::new(
-              0.5_f32 * (1_f32 + rng.gen::<f32>()),
-              0.5_f32 * (1_f32 + rng.gen::<f32>()),
-              0.5_f32 * (1_f32 + rng.gen::<f32>()),
-            );
-
-            let mtl = Arc::new(Metal::new(color, 0.5_f32 * rng.gen::<f32>()));
-
-            world.push(Arc::new(Sphere::new(center, 0.2_f32, mtl)));
-          } else {
-            //
-            // glass
-            let mtl = Arc::new(Dielectric::new(1.5_f32));
-            world.push(Arc::new(Sphere::new(center, 0.3f32, mtl)));
-          }
-        }
-      }
-    }
-
-    world.push(Arc::new(Sphere::new(
-      Vec3::new(0_f32, 1_f32, 0_f32),
-      1_f32,
-      Arc::new(Dielectric::new(1.5_f32)),
-    )));
-
-    world.push(Arc::new(Sphere::new(
-      Vec3::new(-4_f32, 1_f32, 0_f32),
-      1_f32,
-      Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(Vec3::new(
-        0.4_f32, 0.2_f32, 0.1_f32,
-      ))))),
-    )));
-
-    world.push(Arc::new(Sphere::new(
-      Vec3::new(4_f32, 1_f32, 0_f32),
-      1_f32,
-      Arc::new(Metal::new(Vec3::new(0.7_f32, 0.6_f32, 0.5_f32), 0_f32)),
-    )));
-
-    BvhNode::new(&mut world, 0_f32, 1_f32)
-  }
-
-  fn random_world2() -> Arc<Hitable> {
+  fn default_world() -> HitableList {
     let mut world = HitableList::new();
-
-    // let checker_tex = Arc::new(CheckerTexture::new(
-    //   Arc::new(ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32))),
-    //   Arc::new(ConstantTexture::new(Vec3::new(0.9_f32, 0.9_f32, 0.9_f32))),
-    // ));
 
     let noise_tex =
       Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(8_f32))));
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0f32, -1000f32, 0f32),
       1000f32,
       noise_tex.clone(),
@@ -248,18 +158,18 @@ impl WorldBuilder {
             Arc::new(Dielectric::new(1.5f32))
           };
 
-          world.add_object(Box::new(Sphere::new(center, 0.2f32, mtl)));
+          world.add_object(Arc::new(Sphere::new(center, 0.2f32, mtl)));
         }
       }
     }
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0f32, 1f32, 0f32),
       1f32,
       Arc::new(Dielectric::new(1.5f32)),
     )));
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(-4f32, 1f32, 0f32),
       1f32,
       Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(Vec3::new(
@@ -267,36 +177,50 @@ impl WorldBuilder {
       ))))),
     )));
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(4f32, 1f32, 0f32),
       1f32,
       Arc::new(Metal::new(Vec3::new(0.7f32, 0.6f32, 0.5f32), 0f32)),
     )));
 
-    Arc::new(world)
+    world
   }
 
-  fn two_perlin_spheres() -> Arc<Hitable> {
+  pub fn random_world_bvh() -> (Arc<Hitable>, CameraParameters) {
+    let mut world = WorldBuilder::default_world();
+    (
+      BvhNode::new(world.as_mut_slice(), 0_f32, 1_f32),
+      WorldBuilder::default_camera(),
+    )
+  }
+
+  fn random_world() -> (Arc<Hitable>, CameraParameters) {
+    let world = WorldBuilder::default_world();
+
+    (Arc::new(world), WorldBuilder::default_camera())
+  }
+
+  fn two_perlin_spheres() -> (Arc<Hitable>, CameraParameters) {
     let perlin_tex =
       Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(4_f32))));
     let mut world = HitableList::new();
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, -1000_f32, 0_f32),
       1000_f32,
       perlin_tex.clone(),
     )));
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, 2_f32, 0_f32),
       2_f32,
       perlin_tex.clone(),
     )));
 
-    Arc::new(world)
+    (Arc::new(world), WorldBuilder::default_camera())
   }
 
-  fn two_spheres() -> Arc<Hitable> {
+  fn two_spheres() -> (Arc<Hitable>, CameraParameters) {
     let odd =
       Arc::new(ConstantTexture::new(Vec3::new(0.2_f32, 0.3_f32, 0.1_f32)));
     let even =
@@ -307,22 +231,22 @@ impl WorldBuilder {
 
     let mut world = HitableList::new();
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, -10_f32, 0_f32),
       10_f32,
       checker_mtl.clone(),
     )));
 
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, 10_f32, 0_f32),
       10_f32,
       checker_mtl.clone(),
     )));
 
-    Arc::new(world)
+    (Arc::new(world), WorldBuilder::default_camera())
   }
 
-  fn simple_light() -> Arc<Hitable> {
+  fn simple_light() -> (Arc<Hitable>, CameraParameters) {
     let perlin_tex =
       Arc::new(Lambertian::new(Arc::new(NoiseTexture::new(4_f32))));
     let light_mtl = Arc::new(DiffuseLight::new(Arc::new(
@@ -330,22 +254,22 @@ impl WorldBuilder {
     )));
 
     let mut world = HitableList::new();
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, -1000_f32, 0_f32),
       1000_f32,
       perlin_tex.clone(),
     )));
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, 2_f32, 0_f32),
       2_f32,
       perlin_tex.clone(),
     )));
-    world.add_object(Box::new(Sphere::new(
+    world.add_object(Arc::new(Sphere::new(
       Vec3::new(0_f32, 7_f32, 0_f32),
       2_f32,
       light_mtl.clone(),
     )));
-    world.add_object(Box::new(XYRect::new(
+    world.add_object(Arc::new(XYRect::new(
       3_f32,
       5_f32,
       1_f32,
@@ -354,7 +278,87 @@ impl WorldBuilder {
       light_mtl.clone(),
     )));
 
-    Arc::new(world)
+    (Arc::new(world), WorldBuilder::default_camera())
+  }
+
+  fn cornell_box() -> (Arc<Hitable>, CameraParameters) {
+    let red = Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(
+      Vec3::new(0.65_f32, 0.05_f32, 0.05_f32),
+    ))));
+
+    let white = Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(
+      Vec3::new(0.73_f32, 0.73_f32, 0.73_f32),
+    ))));
+
+    let green = Arc::new(Lambertian::new(Arc::new(ConstantTexture::new(
+      Vec3::new(0.12_f32, 0.45_f32, 0.15_f32),
+    ))));
+
+    let light = Arc::new(DiffuseLight::new(Arc::new(ConstantTexture::new(
+      Vec3::same(15_f32),
+    ))));
+
+    let mut world = HitableList::new();
+    world.add_object(Arc::new(YZRect::new(
+      0_f32, 555_f32, 0_f32, 555_f32, 555_f32, green,
+    )));
+
+    world.add_object(Arc::new(YZRect::new(
+      0_f32, 555_f32, 0_f32, 555_f32, 0_f32, red,
+    )));
+
+    world.add_object(Arc::new(XZRect::new(
+      213_f32, 343_f32, 227_f32, 332_f32, 554_f32, light,
+    )));
+
+    world.add_object(Arc::new(XZRect::new(
+      0_f32,
+      555_f32,
+      0_f32,
+      555_f32,
+      0_f32,
+      white.clone(),
+    )));
+
+    world.add_object(Arc::new(XZRect::new(
+      0_f32,
+      555_f32,
+      0_f32,
+      555_f32,
+      555_f32,
+      white.clone(),
+    )));
+
+    let cam_params = {
+      let mut cp = CameraParameters::default();
+      cp.lookfrom = Vec3::new(278_f32, 278f32, -800_f32);
+      cp.lookat = Vec3::new(278_f32, 278_f32, 0_f32);
+      cp.world_up = Vec3::new(0_f32, 1_f32, 0_f32);
+      cp.focus_dist = 10_f32;
+      cp.aperture = 0_f32;
+      cp.field_of_view = 40_f32;
+      cp.time0 = 0_f32;
+      cp.time1 = 1_f32;
+
+      cp
+    };
+
+    (Arc::new(world), cam_params)
+  }
+
+  fn default_camera() -> CameraParameters {
+    let mut defparams = CameraParameters::default();
+
+    defparams.lookfrom = Vec3::new(13f32, 2f32, 3f32);
+    defparams.lookat = Vec3::new(0f32, 0f32, 0f32);
+    defparams.world_up = Vec3::new(0_f32, 1_f32, 0_f32);
+    defparams.focus_dist = 10f32;
+    defparams.aperture = 0.1f32;
+    defparams.field_of_view = 20_f32;
+    defparams.time0 = 0_f32;
+    defparams.time1 = 1_f32;
+
+    defparams
   }
 }
 
@@ -364,31 +368,29 @@ const WORK_TILE_SIZE: u32 = 4;
 fn main() {
   let nx = 1200;
   let ny = 800;
-  const RAYS_PER_PIXEL: u32 = 64;
+  const RAYS_PER_PIXEL: u32 = 128;
 
   let window = Window::new(0, nx, 0, ny);
-  let lookfrom = Vec3::new(13f32, 2f32, 3f32);
-  let lookat = Vec3::new(0f32, 0f32, 0f32);
-  let dist_to_focus = 10f32;
-  let aperture = 0.1f32;
+
+  let (world, cam_params) =
+        //WorldBuilder::two_perlin_spheres();
+//            WorldBuilder::random_world();
+  //          WorldBuilder::two_spheres();
+          WorldBuilder::random_world_bvh();
+  //            WorldBuilder::simple_light();
+  //    WorldBuilder::cornell_box();
 
   let cam = Camera::new(
-    lookfrom,
-    lookat,
-    Vec3::new(0f32, 1f32, 0f32),
-    20f32,
+    cam_params.lookfrom,
+    cam_params.lookat,
+    cam_params.world_up,
+    cam_params.field_of_view,
     nx as f32 / ny as f32,
-    aperture,
-    dist_to_focus,
-    0_f32,
-    1_f32,
+    cam_params.aperture,
+    cam_params.focus_dist,
+    cam_params.time0,
+    cam_params.time1,
   );
-
-  let world =
-        //WorldBuilder::two_perlin_spheres();
-    //        WorldBuilder::random_world2();
-    //        WorldBuilder::two_spheres();
-        WorldBuilder::simple_light();
 
   let domains = {
     let mut d = Vec::new();
